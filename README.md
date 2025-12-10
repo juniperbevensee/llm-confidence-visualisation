@@ -13,15 +13,19 @@ This Streamlit application provides a visual representation of language model co
 
 - 💬 Interactive chat interface
 - 🎨 Color-coded token visualization based on probability
-- 📊 Probability statistics (average, min, max)
+- 📊 Probability statistics (average, min, max, std deviation)
 - ⚙️ Configurable Ollama model and API endpoint
 - 💾 Chat history management
+- 📦 **Built-in model management** - Download models directly from the app
+- 📈 Real-time download progress tracking
+- 🔍 Automatic model detection and availability checks
+- ✅ Connection status monitoring
 
 ## Prerequisites
 
 - Python 3.8 or higher
 - [Ollama](https://ollama.ai/) v0.12.11 or later (required for logprobs support)
-- At least one Ollama model downloaded (e.g., `llama2`, `mistral`, `codellama`)
+- **No models required initially** - You can download models directly from the app!
 
 ## Installation
 
@@ -51,10 +55,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
 ```
 
-5. Download an Ollama model if you haven't already:
-```bash
-ollama pull llama2
-```
+That's it! You can download models directly from the app interface.
 
 ## Usage
 
@@ -65,13 +66,21 @@ streamlit run app.py
 
 2. Open your browser to the URL shown (typically `http://localhost:8501`)
 
-3. Configure the settings in the sidebar:
-   - **Ollama Model**: Enter the name of your model (e.g., `llama2`, `mistral`)
-   - **Ollama API URL**: Set the URL where Ollama is running (default: `http://localhost:11434`)
+3. **Download a model** (if you don't have any):
+   - The app will detect if you have no models installed
+   - Enter a model name (e.g., `llama3.2`, `mistral`, `phi3`)
+   - Click "📥 Download" and watch the progress bar
+   - Popular models:
+     - `llama3.2` - Latest Llama model (small, fast)
+     - `mistral` - Mistral 7B (great performance)
+     - `phi3` - Microsoft Phi-3 (compact)
+     - `codellama` - Specialized for code
 
-4. Type your question in the chat input and press Enter
+4. **Select your model** from the dropdown in the sidebar
 
-5. View the response with color-coded tokens showing the model's confidence
+5. Type your question in the chat input and press Enter
+
+6. View the response with color-coded tokens showing the model's confidence
 
 ## How It Works
 
@@ -139,9 +148,11 @@ Each streaming chunk includes logprobs data:
 
 ## Configuration
 
-You can customize the app behavior by modifying these settings in the sidebar:
-- **Model Name**: Any Ollama model you have installed
-- **API URL**: If Ollama is running on a different host/port
+The app provides several configuration options in the sidebar:
+- **Model Selection**: Choose from your installed models
+- **Download More Models**: Add new models anytime via the UI
+- **Use Chat API**: Toggle between Chat and Generate endpoints
+- **Connection Status**: Real-time Ollama connection monitoring
 
 ## Troubleshooting
 
@@ -159,6 +170,16 @@ You can customize the app behavior by modifying these settings in the sidebar:
 - Solution: Ensure you're running Ollama v0.12.11 or later (`ollama --version`)
 - Update Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
 - Some models may not support logprobs - try a different model
+
+**Issue**: 404 or 405 error when connecting to Ollama
+- Solution: Make sure Ollama is running (`ollama serve`)
+- Check that no models are in a broken state (`ollama list`)
+- Restart Ollama if needed
+
+**Issue**: Model download stuck or slow
+- Solution: Check your internet connection
+- Some models are large (several GB) - be patient
+- Try a smaller model like `phi3` or `llama3.2`
 
 ## Future Enhancements
 
