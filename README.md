@@ -24,9 +24,19 @@ This Streamlit application provides a visual representation of language model co
 ## Prerequisites
 
 - Python 3.8 or higher
-- [Ollama](https://ollama.ai/) v0.12.11 or later (required for logprobs support)
-- [ollama-python](https://pypi.org/project/ollama/) v0.6.1 or later (for logprobs in Python library)
+- [Ollama](https://ollama.ai/) v0.12.11 or later (v0.13.2+ recommended for best logprobs support)
+- [ollama-python](https://pypi.org/project/ollama/) v0.6.1 or later
 - **No models required initially** - You can download models directly from the app!
+
+### Version Check
+
+```bash
+# Check Ollama server version
+ollama --version  # Should be 0.12.11 or later
+
+# Check Python library version
+pip show ollama | grep Version  # Should be 0.6.1 or later
+```
 
 ## Installation
 
@@ -82,6 +92,19 @@ streamlit run app.py
 5. Type your question in the chat input and press Enter
 
 6. View the response with color-coded tokens showing the model's confidence
+
+### Debugging / Logging
+
+The app includes console logging to help debug logprobs issues. Check your terminal for:
+- API request payloads
+- Response chunk samples
+- Logprobs extraction status
+
+To enable debug logging, edit `.streamlit/config.toml`:
+```toml
+[logger]
+level = "debug"
+```
 
 ## How It Works
 

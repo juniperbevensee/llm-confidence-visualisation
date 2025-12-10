@@ -5,6 +5,15 @@ import numpy as np
 import pandas as pd
 from typing import List, Dict, Optional
 import time
+import logging
+import json
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -184,12 +193,23 @@ def generate_with_logprobs(
                 }
             }
 
+            logger.info(f"Sending chat request to {url}")
+            logger.info(f"Payload: {json.dumps(payload, indent=2)}")
+
             response = requests.post(url, json=payload, stream=True, timeout=120)
             response.raise_for_status()
 
+            logger.info(f"Response status: {response.status_code}")
+
+            chunk_count = 0
             for line in response.iter_lines():
                 if line:
                     chunk = json.loads(line)
+                    chunk_count += 1
+
+                    # Log first few chunks for debugging
+                    if chunk_count <= 3:
+                        logger.info(f"Chunk {chunk_count}: {json.dumps(chunk, indent=2)}")
 
                     # Extract response text
                     if 'message' in chunk and 'content' in chunk['message']:
@@ -200,8 +220,10 @@ def generate_with_logprobs(
                         logprobs_list = None
                         if 'logprobs' in chunk:
                             logprobs_list = chunk['logprobs']
+                            logger.debug(f"Found logprobs in chunk: {logprobs_list}")
                         elif 'message' in chunk and 'logprobs' in chunk['message']:
                             logprobs_list = chunk['message']['logprobs']
+                            logger.debug(f"Found logprobs in message: {logprobs_list}")
 
                         if logprobs_list:
                             for logprob_entry in logprobs_list:
@@ -212,6 +234,11 @@ def generate_with_logprobs(
                                 tokens.append(token)
                                 probabilities.append(probability)
                                 logprobs_data.append(logprob)
+                        else:
+                            if chunk_count <= 3:
+                                logger.warning(f"No logprobs found in chunk {chunk_count}")
+
+            logger.info(f"Processed {chunk_count} chunks, extracted {len(tokens)} tokens with probabilities")
         else:
             # Use generate API with logprobs enabled via REST API
             url = f"{base_url}/api/generate"
@@ -226,12 +253,23 @@ def generate_with_logprobs(
                 }
             }
 
+            logger.info(f"Sending generate request to {url}")
+            logger.info(f"Payload: {json.dumps(payload, indent=2)}")
+
             response = requests.post(url, json=payload, stream=True, timeout=120)
             response.raise_for_status()
 
+            logger.info(f"Response status: {response.status_code}")
+
+            chunk_count = 0
             for line in response.iter_lines():
                 if line:
                     chunk = json.loads(line)
+                    chunk_count += 1
+
+                    # Log first few chunks for debugging
+                    if chunk_count <= 3:
+                        logger.info(f"Chunk {chunk_count}: {json.dumps(chunk, indent=2)}")
 
                     # Extract response text
                     if 'response' in chunk:
@@ -240,6 +278,7 @@ def generate_with_logprobs(
 
                         # Extract logprobs if available
                         if 'logprobs' in chunk and chunk['logprobs']:
+                            logger.debug(f"Found logprobs: {chunk['logprobs']}")
                             for logprob_entry in chunk['logprobs']:
                                 token = logprob_entry.get('token', token_text)
                                 logprob = logprob_entry.get('logprob', 0)
@@ -248,6 +287,11 @@ def generate_with_logprobs(
                                 tokens.append(token)
                                 probabilities.append(probability)
                                 logprobs_data.append(logprob)
+                        else:
+                            if chunk_count <= 3:
+                                logger.warning(f"No logprobs found in chunk {chunk_count}")
+
+            logger.info(f"Processed {chunk_count} chunks, extracted {len(tokens)} tokens with probabilities")
 
         return {
             "response": full_response,

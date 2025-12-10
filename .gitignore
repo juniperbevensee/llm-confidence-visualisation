@@ -40,3 +40,4 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+# Keep config.toml in repo but ignore secrets
