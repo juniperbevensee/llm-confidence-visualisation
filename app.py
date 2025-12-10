@@ -70,14 +70,15 @@ def get_available_models() -> List[str]:
         model_names = []
         for model in models_list:
             try:
-                # Handle model objects with attributes (e.g., model.name)
-                if hasattr(model, 'name'):
-                    model_names.append(model.name)
-                elif hasattr(model, 'model'):
+                # Handle model objects with attributes
+                # Check .model first (primary field in ollama library)
+                if hasattr(model, 'model'):
                     model_names.append(model.model)
+                elif hasattr(model, 'name'):
+                    model_names.append(model.name)
                 # Handle dict-based models
                 elif isinstance(model, dict):
-                    name = model.get('name') or model.get('model') or model.get('id')
+                    name = model.get('model') or model.get('name') or model.get('id')
                     if name:
                         model_names.append(name)
                 # Handle plain strings
@@ -165,12 +166,18 @@ def generate_with_logprobs(
         full_response = ""
 
         if use_chat and messages:
-            # Use chat API
+            # Use chat API with logprobs enabled
+            # Requires ollama-python >= 0.6.1
             response = ollama.chat(
                 model=model,
                 messages=messages,
                 stream=True,
-                options={'num_predict': 500}
+                format='',  # Use default format
+                options={
+                    'num_predict': 500,
+                    'num_ctx': 2048,
+                },
+                keep_alive='5m'
             )
 
             for chunk in response:
@@ -178,9 +185,15 @@ def generate_with_logprobs(
                     token_text = chunk['message']['content']
                     full_response += token_text
 
-                    # Extract logprobs if available
-                    if 'message' in chunk and 'logprobs' in chunk['message']:
-                        for logprob_entry in chunk['message']['logprobs']:
+                    # Extract logprobs if available (check multiple possible locations)
+                    logprobs_list = None
+                    if 'logprobs' in chunk:
+                        logprobs_list = chunk['logprobs']
+                    elif 'message' in chunk and 'logprobs' in chunk['message']:
+                        logprobs_list = chunk['message']['logprobs']
+
+                    if logprobs_list:
+                        for logprob_entry in logprobs_list:
                             token = logprob_entry.get('token', token_text)
                             logprob = logprob_entry.get('logprob', 0)
                             probability = math.exp(logprob)
@@ -189,12 +202,18 @@ def generate_with_logprobs(
                             probabilities.append(probability)
                             logprobs_data.append(logprob)
         else:
-            # Use generate API
+            # Use generate API with logprobs enabled
+            # Requires ollama-python >= 0.6.1
             response = ollama.generate(
                 model=model,
                 prompt=prompt,
                 stream=True,
-                options={'num_predict': 500}
+                format='',  # Use default format
+                options={
+                    'num_predict': 500,
+                    'num_ctx': 2048,
+                },
+                keep_alive='5m'
             )
 
             for chunk in response:
