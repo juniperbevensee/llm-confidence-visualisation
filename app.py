@@ -43,18 +43,49 @@ def get_color_from_probability(prob: float) -> str:
 def check_ollama_connection() -> bool:
     """Check if Ollama is running and accessible."""
     try:
-        ollama.list()
-        return True
+        response = ollama.list()
+        # Verify we got a valid response
+        return response is not None
     except Exception as e:
         return False
 
 def get_available_models() -> List[str]:
     """Get list of available Ollama models."""
     try:
-        models = ollama.list()
-        return [model['name'] for model in models.get('models', [])]
+        response = ollama.list()
+
+        # Handle different response formats
+        if isinstance(response, dict):
+            models_list = response.get('models', [])
+        elif isinstance(response, list):
+            models_list = response
+        else:
+            st.error(f"Unexpected response format from ollama.list(): {type(response)}")
+            return []
+
+        # Extract model names with error handling
+        model_names = []
+        for model in models_list:
+            try:
+                # Try different possible field names
+                if isinstance(model, dict):
+                    name = model.get('name') or model.get('model') or model.get('id')
+                    if name:
+                        model_names.append(name)
+                elif isinstance(model, str):
+                    model_names.append(model)
+            except Exception as e:
+                st.warning(f"Could not parse model entry: {model}, error: {e}")
+                continue
+
+        return model_names
+
     except Exception as e:
         st.error(f"Error fetching models: {e}")
+        # Show more debug info in expander
+        with st.expander("🔍 Debug Information"):
+            st.code(f"Exception: {type(e).__name__}\nMessage: {str(e)}")
+            st.info("Try running `ollama list` in your terminal to see if models are accessible.")
         return []
 
 def pull_model(model_name: str, progress_bar, status_text) -> bool:
@@ -329,12 +360,21 @@ def main():
         if not check_ollama_connection():
             st.error("❌ Ollama is not running")
             st.info("Start Ollama with: `ollama serve`")
+            st.code("# In a terminal, run:\nollama serve", language="bash")
             st.stop()
 
         st.success("✅ Ollama is running")
 
         # Model management
         available_models = get_available_models()
+
+        # Debug mode toggle (hidden by default)
+        if st.checkbox("🐛 Debug Mode", value=False, help="Show raw model data for troubleshooting"):
+            try:
+                raw_response = ollama.list()
+                st.json(raw_response)
+            except Exception as e:
+                st.error(f"Could not fetch raw data: {e}")
 
         if not available_models:
             st.warning("⚠️ No models available")
@@ -366,7 +406,13 @@ def main():
         3. Enter your question or prompt
         4. View the response with color-coded confidence
 
-        ### ℹ️ Requirements
+        ### ℹ️ About Models
+        - Models are auto-loaded on first use (no need to "start" them)
+        - Downloaded models appear in the dropdown above
+        - First request may be slower as the model loads into memory
+        - Subsequent requests will be faster
+
+        ### 🔧 Requirements
         - Ollama v0.12.11 or later (with logprobs support)
         - Run: `ollama --version` to check
         - Update: `curl -fsSL https://ollama.com/install.sh | sh`
