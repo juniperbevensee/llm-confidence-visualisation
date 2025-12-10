@@ -20,7 +20,7 @@ This Streamlit application provides a visual representation of language model co
 ## Prerequisites
 
 - Python 3.8 or higher
-- [Ollama](https://ollama.ai/) installed and running locally
+- [Ollama](https://ollama.ai/) v0.12.11 or later (required for logprobs support)
 - At least one Ollama model downloaded (e.g., `llama2`, `mistral`, `codellama`)
 
 ## Installation
@@ -36,12 +36,22 @@ cd llm-confidence-visualisation
 pip install -r requirements.txt
 ```
 
-3. Make sure Ollama is running:
+3. Check your Ollama version (must be v0.12.11+):
+```bash
+ollama --version
+```
+
+If you need to update Ollama:
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+4. Make sure Ollama is running:
 ```bash
 ollama serve
 ```
 
-4. Download an Ollama model if you haven't already:
+5. Download an Ollama model if you haven't already:
 ```bash
 ollama pull llama2
 ```
@@ -66,9 +76,13 @@ streamlit run app.py
 ## How It Works
 
 1. **User Input**: You enter a prompt in the chat interface
-2. **API Call**: The app calls the Ollama API with logprobs enabled
-3. **Probability Calculation**: Log probabilities are converted to standard probabilities using `e^(logprob)`
-4. **Visualization**: Each token is color-coded based on its probability:
+2. **API Call**: The app calls the Ollama API with `"logprobs": true` parameter
+3. **Token Extraction**: Each response chunk includes:
+   - `token`: The actual token text
+   - `logprob`: The log probability of that token
+   - `bytes`: Raw byte representation
+4. **Probability Calculation**: Log probabilities are converted to standard probabilities using `p = e^(logprob)`
+5. **Visualization**: Each token is color-coded based on its probability:
    - Probability < 0.5: Red to Yellow gradient
    - Probability ≥ 0.5: Yellow to Green gradient
 
@@ -90,9 +104,38 @@ else:
     b = 0
 ```
 
-### Note on Logprobs
+### Logprobs Support
 
-Currently, Ollama's API has limited native support for returning logprobs. The current implementation uses simulated probabilities for demonstration purposes. As Ollama adds full logprobs support in future versions, this app will be updated to use actual token probabilities from the model.
+This app uses **actual log probabilities** from Ollama's API (available since v0.12.11, released November 2024). The logprobs feature provides the model's confidence for each generated token.
+
+#### API Request Example
+
+```python
+payload = {
+    "model": "llama2",
+    "prompt": "Why is the sky blue?",
+    "stream": True,
+    "logprobs": True  # Enable log probabilities
+}
+```
+
+#### Response Format
+
+Each streaming chunk includes logprobs data:
+
+```json
+{
+  "model": "llama2",
+  "response": "The",
+  "logprobs": [
+    {
+      "token": "The",
+      "logprob": -0.5234,
+      "bytes": [84, 104, 101]
+    }
+  ]
+}
+```
 
 ## Configuration
 
@@ -112,17 +155,21 @@ You can customize the app behavior by modifying these settings in the sidebar:
 - Try a different model
 - Ensure your model has enough context length for the prompt
 
-**Issue**: All tokens show the same color
-- Solution: This is expected with the current demo implementation. Real logprobs will be used once Ollama API supports them fully.
+**Issue**: No logprobs data received
+- Solution: Ensure you're running Ollama v0.12.11 or later (`ollama --version`)
+- Update Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
+- Some models may not support logprobs - try a different model
 
 ## Future Enhancements
 
-- [ ] Use actual logprobs from Ollama when API support is available
+- [ ] Add support for `top_logprobs` to show alternative token predictions
 - [ ] Support for alternative LLM providers (OpenAI, Anthropic, etc.)
-- [ ] Customizable color schemes
-- [ ] Export visualizations as images
-- [ ] Token-level probability inspection
-- [ ] Probability threshold alerts
+- [ ] Customizable color schemes and gradients
+- [ ] Export visualizations as images/PDFs
+- [ ] Token-level probability inspection with detailed tooltips
+- [ ] Probability threshold alerts and warnings
+- [ ] Real-time streaming visualization
+- [ ] Perplexity calculation and display
 
 ## Contributing
 
