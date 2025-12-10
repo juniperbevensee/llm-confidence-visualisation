@@ -54,8 +54,11 @@ def get_available_models() -> List[str]:
     try:
         response = ollama.list()
 
-        # Handle different response formats
-        if isinstance(response, dict):
+        # Handle the ListResponse object from ollama library
+        # The response has a .models attribute containing the list
+        if hasattr(response, 'models'):
+            models_list = response.models
+        elif isinstance(response, dict):
             models_list = response.get('models', [])
         elif isinstance(response, list):
             models_list = response
@@ -67,11 +70,17 @@ def get_available_models() -> List[str]:
         model_names = []
         for model in models_list:
             try:
-                # Try different possible field names
-                if isinstance(model, dict):
+                # Handle model objects with attributes (e.g., model.name)
+                if hasattr(model, 'name'):
+                    model_names.append(model.name)
+                elif hasattr(model, 'model'):
+                    model_names.append(model.model)
+                # Handle dict-based models
+                elif isinstance(model, dict):
                     name = model.get('name') or model.get('model') or model.get('id')
                     if name:
                         model_names.append(name)
+                # Handle plain strings
                 elif isinstance(model, str):
                     model_names.append(model)
             except Exception as e:
