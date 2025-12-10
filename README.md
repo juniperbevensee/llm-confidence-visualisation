@@ -25,6 +25,7 @@ This Streamlit application provides a visual representation of language model co
 
 - Python 3.8 or higher
 - [Ollama](https://ollama.ai/) v0.12.11 or later (required for logprobs support)
+- [ollama-python](https://pypi.org/project/ollama/) v0.6.1 or later (for logprobs in Python library)
 - **No models required initially** - You can download models directly from the app!
 
 ## Installation
