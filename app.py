@@ -1,9 +1,10 @@
 import streamlit as st
-import requests
-import json
+import ollama
 import math
 import numpy as np
-from typing import List, Dict, Tuple
+import pandas as pd
+from typing import List, Dict, Optional
+import time
 
 # Page configuration
 st.set_page_config(
@@ -39,87 +40,138 @@ def get_color_from_probability(prob: float) -> str:
 
     return f"rgb({r}, {g}, {b})"
 
-def call_ollama_chat_with_logprobs(
-    messages: List[Dict],
-    model: str = "llama2",
-    base_url: str = "http://localhost:11434",
-    stream: bool = True
-) -> Dict:
+def check_ollama_connection() -> bool:
+    """Check if Ollama is running and accessible."""
+    try:
+        ollama.list()
+        return True
+    except Exception as e:
+        return False
+
+def get_available_models() -> List[str]:
+    """Get list of available Ollama models."""
+    try:
+        models = ollama.list()
+        return [model['name'] for model in models.get('models', [])]
+    except Exception as e:
+        st.error(f"Error fetching models: {e}")
+        return []
+
+def pull_model(model_name: str, progress_bar, status_text) -> bool:
     """
-    Call Ollama chat API with logprobs enabled.
+    Download an Ollama model with progress tracking.
 
     Args:
-        messages: List of message dictionaries with 'role' and 'content'
-        model: The Ollama model to use
-        base_url: Base URL for Ollama API
-        stream: Whether to use streaming mode
+        model_name: Name of the model to download
+        progress_bar: Streamlit progress bar object
+        status_text: Streamlit text object for status updates
 
     Returns:
-        Dictionary with response text, tokens, and probabilities
+        True if successful, False otherwise
     """
-    url = f"{base_url}/api/chat"
-
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": stream,
-        "logprobs": True,  # Enable log probabilities
-        "options": {
-            "num_predict": 500,
-        }
-    }
-
     try:
-        response = requests.post(url, json=payload, stream=stream, timeout=120)
-        response.raise_for_status()
+        status_text.text(f"Pulling model: {model_name}...")
 
+        # Pull the model with streaming progress
+        current_digest = None
+        for progress in ollama.pull(model_name, stream=True):
+            if 'digest' in progress:
+                digest = progress['digest']
+                if digest != current_digest:
+                    current_digest = digest
+                    status_text.text(f"Downloading: {digest[:12]}...")
+
+            if 'completed' in progress and 'total' in progress:
+                completed = progress['completed']
+                total = progress['total']
+                if total > 0:
+                    progress_percent = completed / total
+                    progress_bar.progress(progress_percent)
+                    status_text.text(f"Downloading: {completed / (1024**3):.2f}GB / {total / (1024**3):.2f}GB")
+
+            if 'status' in progress:
+                if progress['status'] == 'success':
+                    progress_bar.progress(1.0)
+                    status_text.text("✅ Model downloaded successfully!")
+                    return True
+
+        return True
+    except Exception as e:
+        status_text.text(f"❌ Error downloading model: {e}")
+        return False
+
+def generate_with_logprobs(
+    prompt: str = None,
+    messages: List[Dict] = None,
+    model: str = "llama2",
+    use_chat: bool = True
+) -> Optional[Dict]:
+    """
+    Generate response with logprobs using Ollama.
+
+    Args:
+        prompt: Prompt for generate API
+        messages: Messages for chat API
+        model: Model name
+        use_chat: Whether to use chat API (vs generate)
+
+    Returns:
+        Dictionary with response, tokens, and probabilities
+    """
+    try:
         tokens = []
         probabilities = []
         logprobs_data = []
         full_response = ""
 
-        if stream:
-            # Streaming mode - process chunks
-            for line in response.iter_lines():
-                if line:
-                    chunk = json.loads(line)
+        if use_chat and messages:
+            # Use chat API
+            response = ollama.chat(
+                model=model,
+                messages=messages,
+                stream=True,
+                options={'num_predict': 500}
+            )
 
-                    # Extract token and probability information
-                    if "message" in chunk and "content" in chunk["message"]:
-                        token_text = chunk["message"]["content"]
-                        full_response += token_text
+            for chunk in response:
+                if 'message' in chunk and 'content' in chunk['message']:
+                    token_text = chunk['message']['content']
+                    full_response += token_text
 
-                        # Get logprobs if available
-                        if "logprobs" in chunk and chunk["logprobs"]:
-                            for logprob_entry in chunk["logprobs"]:
-                                token = logprob_entry.get("token", token_text)
-                                logprob = logprob_entry.get("logprob", 0)
+                    # Extract logprobs if available
+                    if 'message' in chunk and 'logprobs' in chunk['message']:
+                        for logprob_entry in chunk['message']['logprobs']:
+                            token = logprob_entry.get('token', token_text)
+                            logprob = logprob_entry.get('logprob', 0)
+                            probability = math.exp(logprob)
 
-                                # Convert logprob to probability: p = e^(logprob)
-                                probability = math.exp(logprob)
-
-                                tokens.append(token)
-                                probabilities.append(probability)
-                                logprobs_data.append(logprob)
+                            tokens.append(token)
+                            probabilities.append(probability)
+                            logprobs_data.append(logprob)
         else:
-            # Non-streaming mode
-            data = response.json()
+            # Use generate API
+            response = ollama.generate(
+                model=model,
+                prompt=prompt,
+                stream=True,
+                options={'num_predict': 500}
+            )
 
-            if "message" in data and "content" in data["message"]:
-                full_response = data["message"]["content"]
+            for chunk in response:
+                if 'response' in chunk:
+                    token_text = chunk['response']
+                    full_response += token_text
 
-                # Get logprobs if available
-                if "logprobs" in data and data["logprobs"]:
-                    for logprob_entry in data["logprobs"]:
-                        token = logprob_entry.get("token", "")
-                        logprob = logprob_entry.get("logprob", 0)
+                    # Extract logprobs if available
+                    if 'logprobs' in chunk and chunk['logprobs']:
+                        for logprob_entry in chunk['logprobs']:
+                            token = logprob_entry.get('token', token_text)
+                            logprob = logprob_entry.get('logprob', 0)
+                            probability = math.exp(logprob)
 
-                        # Convert logprob to probability: p = e^(logprob)
-                        probability = math.exp(logprob)
-
-                        tokens.append(token)
-                        probabilities.append(probability)
-                        logprobs_data.append(logprob)
+                            tokens.append(token)
+                            probabilities.append(probability)
+                            logprobs_data.append(logprob)
 
         return {
             "response": full_response,
@@ -128,101 +180,8 @@ def call_ollama_chat_with_logprobs(
             "logprobs": logprobs_data
         }
 
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error calling Ollama API: {e}")
-        return None
-
-def call_ollama_generate_with_logprobs(
-    prompt: str,
-    model: str = "llama2",
-    base_url: str = "http://localhost:11434",
-    stream: bool = True
-) -> Dict:
-    """
-    Call Ollama generate API with logprobs enabled.
-
-    Args:
-        prompt: The user's prompt
-        model: The Ollama model to use
-        base_url: Base URL for Ollama API
-        stream: Whether to use streaming mode
-
-    Returns:
-        Dictionary with response text, tokens, and probabilities
-    """
-    url = f"{base_url}/api/generate"
-
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": stream,
-        "logprobs": True,  # Enable log probabilities
-        "options": {
-            "num_predict": 500,
-        }
-    }
-
-    try:
-        response = requests.post(url, json=payload, stream=stream, timeout=120)
-        response.raise_for_status()
-
-        tokens = []
-        probabilities = []
-        logprobs_data = []
-        full_response = ""
-
-        if stream:
-            # Streaming mode - process chunks
-            for line in response.iter_lines():
-                if line:
-                    chunk = json.loads(line)
-
-                    # Extract response text
-                    if "response" in chunk:
-                        token_text = chunk["response"]
-                        full_response += token_text
-
-                        # Get logprobs if available
-                        if "logprobs" in chunk and chunk["logprobs"]:
-                            for logprob_entry in chunk["logprobs"]:
-                                token = logprob_entry.get("token", token_text)
-                                logprob = logprob_entry.get("logprob", 0)
-
-                                # Convert logprob to probability: p = e^(logprob)
-                                probability = math.exp(logprob)
-
-                                tokens.append(token)
-                                probabilities.append(probability)
-                                logprobs_data.append(logprob)
-        else:
-            # Non-streaming mode
-            data = response.json()
-
-            if "response" in data:
-                full_response = data["response"]
-
-                # Get logprobs if available
-                if "logprobs" in data and data["logprobs"]:
-                    for logprob_entry in data["logprobs"]:
-                        token = logprob_entry.get("token", "")
-                        logprob = logprob_entry.get("logprob", 0)
-
-                        # Convert logprob to probability: p = e^(logprob)
-                        probability = math.exp(logprob)
-
-                        tokens.append(token)
-                        probabilities.append(probability)
-                        logprobs_data.append(logprob)
-
-        return {
-            "response": full_response,
-            "tokens": tokens,
-            "probabilities": probabilities,
-            "logprobs": logprobs_data
-        }
-
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error calling Ollama API: {e}")
+    except Exception as e:
+        st.error(f"Error generating response: {e}")
         return None
 
 def display_colored_tokens(tokens: List[str], probabilities: List[float], logprobs: List[float] = None):
@@ -256,6 +215,101 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
     html = "".join(html_parts)
     st.markdown(f'<div style="line-height: 2.5; white-space: pre-wrap;">{html}</div>', unsafe_allow_html=True)
 
+def show_model_management():
+    """Display model management interface."""
+    st.header("📦 Model Management")
+
+    # Check connection
+    if not check_ollama_connection():
+        st.error("⚠️ Cannot connect to Ollama. Please ensure Ollama is running.")
+        st.code("ollama serve", language="bash")
+        return None
+
+    # Get available models
+    available_models = get_available_models()
+
+    if not available_models:
+        st.warning("⚠️ No models found. Please download a model to get started.")
+        st.info("""
+        **Popular models to try:**
+        - `llama3.2` - Latest Llama model (small, fast)
+        - `llama2` - Llama 2 model
+        - `mistral` - Mistral 7B model
+        - `codellama` - Code-focused model
+        - `phi3` - Microsoft Phi-3 model
+
+        Or visit https://ollama.com/library for more options.
+        """)
+
+        # Model download interface
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            model_to_download = st.text_input(
+                "Enter model name to download",
+                placeholder="e.g., llama3.2, mistral, phi3",
+                key="model_download_input"
+            )
+
+        with col2:
+            st.write("")  # Spacing
+            st.write("")  # Spacing
+            download_button = st.button("📥 Download", type="primary", key="download_model_btn")
+
+        if download_button and model_to_download:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            success = pull_model(model_to_download, progress_bar, status_text)
+
+            if success:
+                st.success(f"✅ Model '{model_to_download}' downloaded successfully!")
+                time.sleep(2)
+                st.rerun()
+            else:
+                st.error(f"❌ Failed to download model '{model_to_download}'")
+
+        return None
+    else:
+        st.success(f"✅ Found {len(available_models)} model(s)")
+
+        # Display available models
+        with st.expander("📋 Available Models", expanded=True):
+            for model in available_models:
+                st.write(f"• {model}")
+
+        # Model selection
+        selected_model = st.selectbox(
+            "Select a model to use",
+            available_models,
+            key="model_selector"
+        )
+
+        # Option to download more models
+        with st.expander("➕ Download Another Model"):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_model = st.text_input(
+                    "Model name",
+                    placeholder="e.g., llama3.2, mistral",
+                    key="new_model_input"
+                )
+            with col2:
+                st.write("")
+                st.write("")
+                if st.button("📥 Download", key="download_new_model_btn"):
+                    if new_model:
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+
+                        success = pull_model(new_model, progress_bar, status_text)
+
+                        if success:
+                            st.success(f"✅ Model '{new_model}' downloaded!")
+                            time.sleep(2)
+                            st.rerun()
+
+        return selected_model
+
 def main():
     st.title("🎨 LLM Confidence Visualizer")
     st.markdown("""
@@ -271,17 +325,32 @@ def main():
     with st.sidebar:
         st.header("⚙️ Configuration")
 
-        model_name = st.text_input(
-            "Ollama Model",
-            value="llama2",
-            help="Name of the Ollama model to use (e.g., llama2, mistral, codellama)"
-        )
+        # Check Ollama connection
+        if not check_ollama_connection():
+            st.error("❌ Ollama is not running")
+            st.info("Start Ollama with: `ollama serve`")
+            st.stop()
 
-        ollama_url = st.text_input(
-            "Ollama API URL",
-            value="http://localhost:11434",
-            help="Base URL for your Ollama instance"
-        )
+        st.success("✅ Ollama is running")
+
+        # Model management
+        available_models = get_available_models()
+
+        if not available_models:
+            st.warning("⚠️ No models available")
+            if st.button("🔄 Refresh Models"):
+                st.rerun()
+            model_name = None
+        else:
+            model_name = st.selectbox(
+                "Select Model",
+                available_models,
+                help="Choose an Ollama model to use"
+            )
+
+            # Option to download more
+            if st.button("➕ Download More Models"):
+                st.session_state.show_download = True
 
         use_chat_api = st.checkbox(
             "Use Chat API",
@@ -289,18 +358,13 @@ def main():
             help="Use /api/chat endpoint instead of /api/generate"
         )
 
-        use_streaming = st.checkbox(
-            "Enable Streaming",
-            value=True,
-            help="Stream responses token by token"
-        )
-
         st.markdown("---")
         st.markdown("""
         ### 📝 Instructions
-        1. Make sure Ollama (v0.12.11+) is running locally
-        2. Enter your question or prompt
-        3. View the response with color-coded confidence
+        1. Make sure Ollama (v0.12.11+) is running
+        2. Download a model if you haven't already
+        3. Enter your question or prompt
+        4. View the response with color-coded confidence
 
         ### ℹ️ Requirements
         - Ollama v0.12.11 or later (with logprobs support)
@@ -308,8 +372,16 @@ def main():
         - Update: `curl -fsSL https://ollama.com/install.sh | sh`
         """)
 
-        # Version check warning
-        st.warning("⚠️ This app requires Ollama v0.12.11+ for logprobs support")
+    # Show model download interface if no models or requested
+    if not available_models or st.session_state.get('show_download', False):
+        selected_model = show_model_management()
+        if st.session_state.get('show_download', False):
+            if st.button("✅ Done"):
+                st.session_state.show_download = False
+                st.rerun()
+        if not selected_model:
+            st.stop()
+        model_name = selected_model
 
     # Initialize chat history in session state
     if "messages" not in st.session_state:
@@ -330,6 +402,10 @@ def main():
 
     # Chat input
     if prompt := st.chat_input("Ask me anything..."):
+        if not model_name:
+            st.error("Please select or download a model first.")
+            st.stop()
+
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
 
@@ -350,18 +426,16 @@ def main():
                             "content": msg["content"]
                         })
 
-                    response_data = call_ollama_chat_with_logprobs(
+                    response_data = generate_with_logprobs(
                         messages=messages,
                         model=model_name,
-                        base_url=ollama_url,
-                        stream=use_streaming
+                        use_chat=True
                     )
                 else:
-                    response_data = call_ollama_generate_with_logprobs(
+                    response_data = generate_with_logprobs(
                         prompt=prompt,
                         model=model_name,
-                        base_url=ollama_url,
-                        stream=use_streaming
+                        use_chat=False
                     )
 
                 if response_data:
@@ -398,7 +472,6 @@ def main():
 
                             # Show distribution
                             st.markdown("**Probability Distribution:**")
-                            import pandas as pd
                             df = pd.DataFrame({
                                 "Probability": probabilities,
                                 "Token": tokens[:len(probabilities)]
