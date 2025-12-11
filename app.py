@@ -315,7 +315,62 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         probabilities: List of probability values (0-1)
         logprobs: Optional list of log probabilities
     """
-    html_parts = []
+    # Add CSS for custom tooltips
+    tooltip_css = """
+    <style>
+    .token-wrapper {
+        position: relative;
+        display: inline-block;
+    }
+
+    .token {
+        padding: 2px 4px;
+        margin: 1px;
+        border-radius: 3px;
+        display: inline-block;
+        font-family: monospace;
+        cursor: help;
+    }
+
+    .token-wrapper .tooltip-text {
+        visibility: hidden;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        pointer-events: none;
+    }
+
+    .token-wrapper .tooltip-text::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #333 transparent transparent transparent;
+    }
+
+    .token-wrapper:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+    }
+    </style>
+    """
+
+    html_parts = [tooltip_css]
 
     for i, (token, prob) in enumerate(zip(tokens, probabilities)):
         color = get_color_from_probability(prob)
@@ -323,15 +378,16 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         # Escape HTML special characters
         token_escaped = token.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-        # Build tooltip text
-        tooltip = f"Probability: {prob:.2%}"
+        # Build tooltip text with line break for logprob
+        tooltip_text = f"Probability: {prob:.2%}"
         if logprobs and i < len(logprobs):
-            tooltip += f" | Logprob: {logprobs[i]:.4f}"
+            tooltip_text += f"<br/>Logprob: {logprobs[i]:.4f}"
 
         html_parts.append(
-            f'<span style="background-color: {color}; padding: 2px 4px; margin: 1px; '
-            f'border-radius: 3px; display: inline-block; font-family: monospace;" '
-            f'title="{tooltip}">{token_escaped}</span>'
+            f'<span class="token-wrapper">'
+            f'<span class="token" style="background-color: {color};">{token_escaped}</span>'
+            f'<span class="tooltip-text">{tooltip_text}</span>'
+            f'</span>'
         )
 
     html = "".join(html_parts)
