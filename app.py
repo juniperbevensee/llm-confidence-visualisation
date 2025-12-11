@@ -315,15 +315,54 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         probabilities: List of probability values (0-1)
         logprobs: Optional list of log probabilities
     """
-    # Simple CSS for token styling
+    # CSS for token styling with hover tooltips
     token_css = """
     <style>
+    .token-wrapper {
+        position: relative;
+        display: inline-block;
+    }
+
     .token {
         padding: 2px 4px;
         margin: 1px;
         border-radius: 3px;
         display: inline-block;
         font-family: monospace;
+        cursor: help;
+    }
+
+    .token-wrapper .tooltip-text {
+        display: none;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        font-size: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        pointer-events: none;
+    }
+
+    .token-wrapper .tooltip-text::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #333 transparent transparent transparent;
+    }
+
+    .token-wrapper:hover .tooltip-text {
+        display: block;
     }
     </style>
     """
@@ -336,8 +375,16 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         # Escape HTML special characters
         token_escaped = token.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+        # Build tooltip text
+        tooltip_text = f"Probability: {prob:.2%}"
+        if logprobs and i < len(logprobs):
+            tooltip_text += f"<br/>Logprob: {logprobs[i]:.4f}"
+
         html_parts.append(
+            f'<span class="token-wrapper">'
             f'<span class="token" style="background-color: {color};">{token_escaped}</span>'
+            f'<span class="tooltip-text">{tooltip_text}</span>'
+            f'</span>'
         )
 
     html = "".join(html_parts)
@@ -355,15 +402,55 @@ def display_colored_sentences(full_response: str, tokens: List[str], probabiliti
     """
     import re
 
-    # Simple CSS for sentence styling
+    # CSS for sentence styling with hover tooltips
     sentence_css = """
     <style>
+    .sentence-wrapper {
+        position: relative;
+        display: inline-block;
+        margin: 2px;
+    }
+
     .sentence {
         padding: 4px 6px;
         margin: 2px;
         border-radius: 4px;
         display: inline-block;
+        cursor: help;
         line-height: 1.8;
+    }
+
+    .sentence-wrapper .tooltip-text {
+        display: none;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        font-size: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        pointer-events: none;
+    }
+
+    .sentence-wrapper .tooltip-text::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #333 transparent transparent transparent;
+    }
+
+    .sentence-wrapper:hover .tooltip-text {
+        display: block;
     }
     </style>
     """
@@ -419,8 +506,16 @@ def display_colored_sentences(full_response: str, tokens: List[str], probabiliti
         # Escape HTML special characters
         sentence_escaped = sentence.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+        # Build tooltip text
+        tooltip_text = f"Avg Probability: {avg_prob:.2%}<br/>Tokens: {len(sentence_probs)}"
+        if avg_logprob is not None:
+            tooltip_text += f"<br/>Avg Logprob: {avg_logprob:.4f}"
+
         html_parts.append(
+            f'<span class="sentence-wrapper">'
             f'<span class="sentence" style="background-color: {color};">{sentence_escaped}</span>'
+            f'<span class="tooltip-text">{tooltip_text}</span>'
+            f'</span>'
         )
 
     html = "".join(html_parts)
@@ -528,6 +623,8 @@ def main():
     - 🔴 **Red**: Low confidence (0%)
     - 🟡 **Yellow**: Medium confidence (50%)
     - 🟢 **Green**: High confidence (100%)
+
+    💡 **Hover over any token or sentence to see exact probability values.**
     """)
 
     # Sidebar configuration
