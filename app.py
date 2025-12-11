@@ -315,7 +315,62 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         probabilities: List of probability values (0-1)
         logprobs: Optional list of log probabilities
     """
-    html_parts = []
+    # Add CSS for custom tooltips
+    tooltip_css = """
+    <style>
+    .token-wrapper {
+        position: relative;
+        display: inline-block;
+    }
+
+    .token {
+        padding: 2px 4px;
+        margin: 1px;
+        border-radius: 3px;
+        display: inline-block;
+        font-family: monospace;
+        cursor: help;
+    }
+
+    .token-wrapper .tooltip-text {
+        visibility: hidden;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        pointer-events: none;
+    }
+
+    .token-wrapper .tooltip-text::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #333 transparent transparent transparent;
+    }
+
+    .token-wrapper:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+    }
+    </style>
+    """
+
+    html_parts = [tooltip_css]
 
     for i, (token, prob) in enumerate(zip(tokens, probabilities)):
         color = get_color_from_probability(prob)
@@ -323,19 +378,154 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         # Escape HTML special characters
         token_escaped = token.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-        # Build tooltip text
-        tooltip = f"Probability: {prob:.2%}"
+        # Build tooltip text with line break for logprob
+        tooltip_text = f"Probability: {prob:.2%}"
         if logprobs and i < len(logprobs):
-            tooltip += f" | Logprob: {logprobs[i]:.4f}"
+            tooltip_text += f"<br/>Logprob: {logprobs[i]:.4f}"
 
         html_parts.append(
-            f'<span style="background-color: {color}; padding: 2px 4px; margin: 1px; '
-            f'border-radius: 3px; display: inline-block; font-family: monospace;" '
-            f'title="{tooltip}">{token_escaped}</span>'
+            f'<span class="token-wrapper">'
+            f'<span class="token" style="background-color: {color};">{token_escaped}</span>'
+            f'<span class="tooltip-text">{tooltip_text}</span>'
+            f'</span>'
         )
 
     html = "".join(html_parts)
     st.markdown(f'<div style="line-height: 2.5; white-space: pre-wrap;">{html}</div>', unsafe_allow_html=True)
+
+def display_colored_sentences(full_response: str, tokens: List[str], probabilities: List[float], logprobs: List[float] = None):
+    """
+    Display sentences with color coding based on average token probabilities.
+
+    Args:
+        full_response: The complete response text
+        tokens: List of token strings
+        probabilities: List of probability values (0-1)
+        logprobs: Optional list of log probabilities
+    """
+    import re
+
+    # Add CSS for custom tooltips (same as token display)
+    tooltip_css = """
+    <style>
+    .sentence-wrapper {
+        position: relative;
+        display: inline-block;
+        margin: 2px;
+    }
+
+    .sentence {
+        padding: 4px 6px;
+        margin: 2px;
+        border-radius: 4px;
+        display: inline-block;
+        cursor: help;
+        line-height: 1.8;
+    }
+
+    .sentence-wrapper .tooltip-text {
+        visibility: hidden;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 8px 12px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        pointer-events: none;
+    }
+
+    .sentence-wrapper .tooltip-text::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #333 transparent transparent transparent;
+    }
+
+    .sentence-wrapper:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+    }
+    </style>
+    """
+
+    # Split response into sentences (basic sentence splitting)
+    # Handle periods, exclamation marks, question marks
+    sentence_pattern = r'([^.!?]+[.!?]+)'
+    sentences = re.findall(sentence_pattern, full_response)
+
+    # If no sentences found (no punctuation), treat entire response as one sentence
+    if not sentences:
+        sentences = [full_response]
+
+    html_parts = [tooltip_css]
+
+    # Track position in token list
+    token_idx = 0
+    reconstructed_text = "".join(tokens)
+
+    for sentence in sentences:
+        # Find which tokens belong to this sentence
+        sentence_tokens = []
+        sentence_probs = []
+        sentence_logprobs = []
+
+        # Calculate how many tokens approximately make up this sentence
+        # This is approximate since tokenization may not align perfectly with text
+        sentence_clean = sentence.strip()
+
+        # Simple approach: collect tokens until we've roughly covered the sentence length
+        chars_collected = 0
+        start_idx = token_idx
+
+        while token_idx < len(tokens) and chars_collected < len(sentence_clean):
+            sentence_tokens.append(tokens[token_idx])
+            sentence_probs.append(probabilities[token_idx])
+            if logprobs and token_idx < len(logprobs):
+                sentence_logprobs.append(logprobs[token_idx])
+            chars_collected += len(tokens[token_idx])
+            token_idx += 1
+
+        # Calculate average probability for this sentence
+        if sentence_probs:
+            avg_prob = np.mean(sentence_probs)
+            avg_logprob = np.mean(sentence_logprobs) if sentence_logprobs else None
+        else:
+            avg_prob = 0.5  # Neutral if no tokens
+            avg_logprob = None
+
+        # Get color for average probability
+        color = get_color_from_probability(avg_prob)
+
+        # Escape HTML special characters
+        sentence_escaped = sentence.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        # Build tooltip text
+        tooltip_text = f"Avg Probability: {avg_prob:.2%}<br/>Tokens: {len(sentence_probs)}"
+        if avg_logprob is not None:
+            tooltip_text += f"<br/>Avg Logprob: {avg_logprob:.4f}"
+
+        html_parts.append(
+            f'<span class="sentence-wrapper">'
+            f'<span class="sentence" style="background-color: {color};">{sentence_escaped}</span>'
+            f'<span class="tooltip-text">{tooltip_text}</span>'
+            f'</span>'
+        )
+
+    html = "".join(html_parts)
+    st.markdown(f'<div style="line-height: 2.2; white-space: pre-wrap;">{html}</div>', unsafe_allow_html=True)
 
 def show_model_management():
     """Display model management interface."""
@@ -489,6 +679,14 @@ def main():
             help="Use /api/chat endpoint instead of /api/generate"
         )
 
+        # Visualization mode toggle
+        viz_mode = st.radio(
+            "Visualization Mode",
+            options=["Token-level", "Sentence-level"],
+            index=0,
+            help="Token-level: Color each token individually\nSentence-level: Color entire sentences by average probability"
+        )
+
         st.markdown("---")
         st.markdown("""
         ### 📝 Instructions
@@ -529,11 +727,20 @@ def main():
         with st.chat_message(message["role"]):
             if message["role"] == "assistant" and "tokens" in message and "probabilities" in message:
                 st.markdown("**Response with confidence visualization:**")
-                display_colored_tokens(
-                    message["tokens"],
-                    message["probabilities"],
-                    message.get("logprobs", None)
-                )
+                # Use current visualization mode for displaying history
+                if viz_mode == "Sentence-level":
+                    display_colored_sentences(
+                        message["content"],
+                        message["tokens"],
+                        message["probabilities"],
+                        message.get("logprobs", None)
+                    )
+                else:
+                    display_colored_tokens(
+                        message["tokens"],
+                        message["probabilities"],
+                        message.get("logprobs", None)
+                    )
             else:
                 st.markdown(message["content"])
 
@@ -583,7 +790,12 @@ def main():
 
                     if tokens and probabilities:
                         st.markdown("**Response with confidence visualization:**")
-                        display_colored_tokens(tokens, probabilities, logprobs)
+
+                        # Display based on selected visualization mode
+                        if viz_mode == "Sentence-level":
+                            display_colored_sentences(full_response, tokens, probabilities, logprobs)
+                        else:
+                            display_colored_tokens(tokens, probabilities, logprobs)
 
                         # Add to chat history
                         st.session_state.messages.append({
