@@ -1,0 +1,41 @@
+[server]
+# Enable CORS for development
+enableCORS = false
+enableXsrfProtection = false
+
+# Server address
+headless = true
+port = 8501
+
+[logger]
+# Logging level: "error", "warning", "info", or "debug"
+level = "info"
+messageFormat = "%(asctime)s %(levelname)s: %(message)s"
+
+[client]
+# Toolbar mode: "auto", "developer", "viewer", or "minimal"
+toolbarMode = "auto"
+showErrorDetails = true
+
+[browser]
+# Open browser automatically
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[theme]
+# Custom theme (optional - uncomment to use)
+# primaryColor = "#FF4B4B"
+# backgroundColor = "#FFFFFF"
+# secondaryBackgroundColor = "#F0F2F6"
+# textColor = "#262730"
+# font = "sans serif"
+
+[runner]
+# Rerun script when changes are detected
+magicEnabled = true
+fastReruns = true
+
+# Memory management
+maxMessageSize = 200
+maxUploadSize = 200

@@ -5,6 +5,15 @@ import numpy as np
 import pandas as pd
 from typing import List, Dict, Optional
 import time
+import logging
+import json
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -145,92 +154,144 @@ def generate_with_logprobs(
     prompt: str = None,
     messages: List[Dict] = None,
     model: str = "llama2",
-    use_chat: bool = True
+    use_chat: bool = True,
+    base_url: str = "http://localhost:11434"
 ) -> Optional[Dict]:
     """
-    Generate response with logprobs using Ollama.
+    Generate response with logprobs using Ollama REST API directly.
 
     Args:
         prompt: Prompt for generate API
         messages: Messages for chat API
         model: Model name
         use_chat: Whether to use chat API (vs generate)
+        base_url: Ollama API base URL
 
     Returns:
         Dictionary with response, tokens, and probabilities
     """
     try:
+        import requests
+        import json
+
         tokens = []
         probabilities = []
         logprobs_data = []
         full_response = ""
 
         if use_chat and messages:
-            # Use chat API with logprobs enabled
-            # Requires ollama-python >= 0.6.1
-            response = ollama.chat(
-                model=model,
-                messages=messages,
-                stream=True,
-                format='',  # Use default format
-                options={
-                    'num_predict': 500,
-                    'num_ctx': 2048,
-                },
-                keep_alive='5m'
-            )
+            # Use chat API with logprobs enabled via REST API
+            url = f"{base_url}/api/chat"
+            payload = {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+                "options": {
+                    "num_predict": 500,
+                    "num_ctx": 2048,
+                    "num_probs": 1,  # Enable logprobs (Ollama uses num_probs instead of logprobs)
+                }
+            }
 
-            for chunk in response:
-                if 'message' in chunk and 'content' in chunk['message']:
-                    token_text = chunk['message']['content']
-                    full_response += token_text
+            logger.info(f"Sending chat request to {url}")
+            logger.info(f"Payload: {json.dumps(payload, indent=2)}")
 
-                    # Extract logprobs if available (check multiple possible locations)
-                    logprobs_list = None
-                    if 'logprobs' in chunk:
-                        logprobs_list = chunk['logprobs']
-                    elif 'message' in chunk and 'logprobs' in chunk['message']:
-                        logprobs_list = chunk['message']['logprobs']
+            response = requests.post(url, json=payload, stream=True, timeout=120)
+            response.raise_for_status()
 
-                    if logprobs_list:
-                        for logprob_entry in logprobs_list:
-                            token = logprob_entry.get('token', token_text)
-                            logprob = logprob_entry.get('logprob', 0)
-                            probability = math.exp(logprob)
+            logger.info(f"Response status: {response.status_code}")
 
-                            tokens.append(token)
-                            probabilities.append(probability)
-                            logprobs_data.append(logprob)
+            chunk_count = 0
+            for line in response.iter_lines():
+                if line:
+                    chunk = json.loads(line)
+                    chunk_count += 1
+
+                    # Log first few chunks for debugging
+                    if chunk_count <= 3:
+                        logger.info(f"Chunk {chunk_count}: {json.dumps(chunk, indent=2)}")
+
+                    # Extract response text
+                    if 'message' in chunk and 'content' in chunk['message']:
+                        token_text = chunk['message']['content']
+                        full_response += token_text
+
+                        # Extract logprobs if available
+                        logprobs_list = None
+                        if 'logprobs' in chunk:
+                            logprobs_list = chunk['logprobs']
+                            logger.debug(f"Found logprobs in chunk: {logprobs_list}")
+                        elif 'message' in chunk and 'logprobs' in chunk['message']:
+                            logprobs_list = chunk['message']['logprobs']
+                            logger.debug(f"Found logprobs in message: {logprobs_list}")
+
+                        if logprobs_list:
+                            for logprob_entry in logprobs_list:
+                                token = logprob_entry.get('token', token_text)
+                                logprob = logprob_entry.get('logprob', 0)
+                                probability = math.exp(logprob)
+
+                                tokens.append(token)
+                                probabilities.append(probability)
+                                logprobs_data.append(logprob)
+                        else:
+                            if chunk_count <= 3:
+                                logger.warning(f"No logprobs found in chunk {chunk_count}")
+
+            logger.info(f"Processed {chunk_count} chunks, extracted {len(tokens)} tokens with probabilities")
         else:
-            # Use generate API with logprobs enabled
-            # Requires ollama-python >= 0.6.1
-            response = ollama.generate(
-                model=model,
-                prompt=prompt,
-                stream=True,
-                format='',  # Use default format
-                options={
-                    'num_predict': 500,
-                    'num_ctx': 2048,
-                },
-                keep_alive='5m'
-            )
+            # Use generate API with logprobs enabled via REST API
+            url = f"{base_url}/api/generate"
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "stream": True,
+                "options": {
+                    "num_predict": 500,
+                    "num_ctx": 2048,
+                    "num_probs": 1,  # Enable logprobs (Ollama uses num_probs instead of logprobs)
+                }
+            }
 
-            for chunk in response:
-                if 'response' in chunk:
-                    token_text = chunk['response']
-                    full_response += token_text
+            logger.info(f"Sending generate request to {url}")
+            logger.info(f"Payload: {json.dumps(payload, indent=2)}")
 
-                    # Extract logprobs if available
-                    if 'logprobs' in chunk and chunk['logprobs']:
-                        for logprob_entry in chunk['logprobs']:
-                            token = logprob_entry.get('token', token_text)
-                            logprob = logprob_entry.get('logprob', 0)
-                            probability = math.exp(logprob)
+            response = requests.post(url, json=payload, stream=True, timeout=120)
+            response.raise_for_status()
 
-                            tokens.append(token)
-                            probabilities.append(probability)
-                            logprobs_data.append(logprob)
+            logger.info(f"Response status: {response.status_code}")
+
+            chunk_count = 0
+            for line in response.iter_lines():
+                if line:
+                    chunk = json.loads(line)
+                    chunk_count += 1
+
+                    # Log first few chunks for debugging
+                    if chunk_count <= 3:
+                        logger.info(f"Chunk {chunk_count}: {json.dumps(chunk, indent=2)}")
+
+                    # Extract response text
+                    if 'response' in chunk:
+                        token_text = chunk['response']
+                        full_response += token_text
+
+                        # Extract logprobs if available
+                        if 'logprobs' in chunk and chunk['logprobs']:
+                            logger.debug(f"Found logprobs: {chunk['logprobs']}")
+                            for logprob_entry in chunk['logprobs']:
+                                token = logprob_entry.get('token', token_text)
+                                logprob = logprob_entry.get('logprob', 0)
+                                probability = math.exp(logprob)
+
+                                tokens.append(token)
+                                probabilities.append(probability)
+                                logprobs_data.append(logprob)
+                        else:
+                            if chunk_count <= 3:
+                                logger.warning(f"No logprobs found in chunk {chunk_count}")
+
+            logger.info(f"Processed {chunk_count} chunks, extracted {len(tokens)} tokens with probabilities")
 
         return {
             "response": full_response,
@@ -241,6 +302,8 @@ def generate_with_logprobs(
 
     except Exception as e:
         st.error(f"Error generating response: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         return None
 
 def display_colored_tokens(tokens: List[str], probabilities: List[float], logprobs: List[float] = None):
