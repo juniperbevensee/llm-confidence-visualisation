@@ -315,8 +315,8 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         probabilities: List of probability values (0-1)
         logprobs: Optional list of log probabilities
     """
-    # Add CSS for custom tooltips
-    tooltip_css = """
+    # CSS for token styling with hover tooltips
+    token_css = """
     <style>
     .token-wrapper {
         position: relative;
@@ -333,7 +333,7 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
     }
 
     .token-wrapper .tooltip-text {
-        visibility: hidden;
+        display: none;
         background-color: #333;
         color: #fff;
         text-align: center;
@@ -345,8 +345,6 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         left: 50%;
         transform: translateX(-50%);
         white-space: nowrap;
-        opacity: 0;
-        transition: opacity 0.3s;
         font-size: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         pointer-events: none;
@@ -364,13 +362,12 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
     }
 
     .token-wrapper:hover .tooltip-text {
-        visibility: visible;
-        opacity: 1;
+        display: block;
     }
     </style>
     """
 
-    html_parts = [tooltip_css]
+    html_parts = [token_css]
 
     for i, (token, prob) in enumerate(zip(tokens, probabilities)):
         color = get_color_from_probability(prob)
@@ -378,7 +375,7 @@ def display_colored_tokens(tokens: List[str], probabilities: List[float], logpro
         # Escape HTML special characters
         token_escaped = token.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-        # Build tooltip text with line break for logprob
+        # Build tooltip text
         tooltip_text = f"Probability: {prob:.2%}"
         if logprobs and i < len(logprobs):
             tooltip_text += f"<br/>Logprob: {logprobs[i]:.4f}"
@@ -405,8 +402,8 @@ def display_colored_sentences(full_response: str, tokens: List[str], probabiliti
     """
     import re
 
-    # Add CSS for custom tooltips (same as token display)
-    tooltip_css = """
+    # CSS for sentence styling with hover tooltips
+    sentence_css = """
     <style>
     .sentence-wrapper {
         position: relative;
@@ -424,7 +421,7 @@ def display_colored_sentences(full_response: str, tokens: List[str], probabiliti
     }
 
     .sentence-wrapper .tooltip-text {
-        visibility: hidden;
+        display: none;
         background-color: #333;
         color: #fff;
         text-align: center;
@@ -436,8 +433,6 @@ def display_colored_sentences(full_response: str, tokens: List[str], probabiliti
         left: 50%;
         transform: translateX(-50%);
         white-space: nowrap;
-        opacity: 0;
-        transition: opacity 0.3s;
         font-size: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         pointer-events: none;
@@ -455,8 +450,7 @@ def display_colored_sentences(full_response: str, tokens: List[str], probabiliti
     }
 
     .sentence-wrapper:hover .tooltip-text {
-        visibility: visible;
-        opacity: 1;
+        display: block;
     }
     </style>
     """
@@ -470,7 +464,7 @@ def display_colored_sentences(full_response: str, tokens: List[str], probabiliti
     if not sentences:
         sentences = [full_response]
 
-    html_parts = [tooltip_css]
+    html_parts = [sentence_css]
 
     # Track position in token list
     token_idx = 0
@@ -630,7 +624,7 @@ def main():
     - 🟡 **Yellow**: Medium confidence (50%)
     - 🟢 **Green**: High confidence (100%)
 
-    Hover over any token to see its exact probability value.
+    💡 **Hover over any token or sentence to see exact probability values.**
     """)
 
     # Sidebar configuration
