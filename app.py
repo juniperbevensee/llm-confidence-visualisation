@@ -186,10 +186,10 @@ def generate_with_logprobs(
                 "model": model,
                 "messages": messages,
                 "stream": True,
+                "logprobs": True,  # Enable logprobs - must be at top level!
                 "options": {
                     "num_predict": 500,
                     "num_ctx": 2048,
-                    "num_probs": 1,  # Enable logprobs (Ollama uses num_probs instead of logprobs)
                 }
             }
 
@@ -246,10 +246,10 @@ def generate_with_logprobs(
                 "model": model,
                 "prompt": prompt,
                 "stream": True,
+                "logprobs": True,  # Enable logprobs - must be at top level!
                 "options": {
                     "num_predict": 500,
                     "num_ctx": 2048,
-                    "num_probs": 1,  # Enable logprobs (Ollama uses num_probs instead of logprobs)
                 }
             }
 
