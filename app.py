@@ -726,7 +726,6 @@ def main():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if message["role"] == "assistant" and "tokens" in message and "probabilities" in message:
-                st.markdown("**Response with confidence visualization:**")
                 # Use current visualization mode for displaying history
                 if viz_mode == "Sentence-level":
                     display_colored_sentences(
@@ -789,8 +788,6 @@ def main():
                     full_response = response_data.get("response", "")
 
                     if tokens and probabilities:
-                        st.markdown("**Response with confidence visualization:**")
-
                         # Display based on selected visualization mode
                         if viz_mode == "Sentence-level":
                             display_colored_sentences(full_response, tokens, probabilities, logprobs)
